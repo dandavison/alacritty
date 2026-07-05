@@ -1037,7 +1037,11 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
     /// The provided mode, mods, and key must match what is allowed by a binding
     /// for its action to be executed.
     fn process_mouse_bindings(&mut self, event: MouseEvent) -> bool {
-        let mode = BindingMode::new(self.ctx.terminal().mode(), self.ctx.search_active());
+        let mode = BindingMode::new(
+            self.ctx.terminal().mode(),
+            self.ctx.search_active(),
+            !self.ctx.selection_is_empty(),
+        );
         let mouse_mode = self.ctx.mouse_mode();
         let mods = self.ctx.modifiers().state();
         let mouse_bindings = self.ctx.config().mouse_bindings().to_owned();

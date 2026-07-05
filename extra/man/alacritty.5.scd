@@ -777,10 +777,14 @@ _https://docs.rs/winit/latest/winit/keyboard/enum.Key.html#variant.Dead_
 		Multiple modifiers can be combined using _|_, like this: _"Control |
 		Shift"_.
 
-	*mode* = _"AppCursor"_ | _"AppKeypad"_ | _"Search"_ | _"Alt"_ | _"Vi"_
+	*mode* = _"AppCursor"_ | _"AppKeypad"_ | _"Search"_ | _"Alt"_ | _"Vi"_ | _"Selection"_
 
 		This defines a terminal mode which must be active for this binding to
 		have an effect.
+
+		_"Selection"_ is active whenever a non-empty selection exists, and can
+		be used to fall back to sending keys to the application when nothing is
+		selected, e.g. _"~Selection"_ with _chars_.
 
 		Prepending _~_ to a mode will require the mode to *not* = be active for
 		the binding to take effect.

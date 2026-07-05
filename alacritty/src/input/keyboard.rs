@@ -176,7 +176,11 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
     /// The provided mode, mods, and key must match what is allowed by a binding
     /// for its action to be executed.
     fn process_key_bindings(&mut self, key: &KeyEvent) -> bool {
-        let mode = BindingMode::new(self.ctx.terminal().mode(), self.ctx.search_active());
+        let mode = BindingMode::new(
+            self.ctx.terminal().mode(),
+            self.ctx.search_active(),
+            !self.ctx.selection_is_empty(),
+        );
         let mods = self.ctx.modifiers().state();
 
         // Don't suppress char if no bindings were triggered.

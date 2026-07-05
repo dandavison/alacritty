@@ -766,12 +766,14 @@ bitflags! {
         const SEARCH                 = 0b0001_0000;
         const DISAMBIGUATE_ESC_CODES = 0b0010_0000;
         const REPORT_ALL_KEYS_AS_ESC = 0b0100_0000;
+        const SELECTION              = 0b1000_0000;
     }
 }
 
 impl BindingMode {
-    pub fn new(mode: &TermMode, search: bool) -> BindingMode {
+    pub fn new(mode: &TermMode, search: bool, selection: bool) -> BindingMode {
         let mut binding_mode = BindingMode::empty();
+        binding_mode.set(BindingMode::SELECTION, selection);
         binding_mode.set(BindingMode::APP_CURSOR, mode.contains(TermMode::APP_CURSOR));
         binding_mode.set(BindingMode::APP_KEYPAD, mode.contains(TermMode::APP_KEYPAD));
         binding_mode.set(BindingMode::ALT_SCREEN, mode.contains(TermMode::ALT_SCREEN));
@@ -807,7 +809,8 @@ impl<'a> Deserialize<'a> for ModeWrapper {
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str(
-                    "a combination of AppCursor | AppKeypad | Alt | Vi, possibly with negation (~)",
+                    "a combination of AppCursor | AppKeypad | Alt | Vi | Search | Selection, \
+                     possibly with negation (~)",
                 )
             }
 
@@ -830,6 +833,8 @@ impl<'a> Deserialize<'a> for ModeWrapper {
                         "~vi" => res.not_mode |= BindingMode::VI,
                         "search" => res.mode |= BindingMode::SEARCH,
                         "~search" => res.not_mode |= BindingMode::SEARCH,
+                        "selection" => res.mode |= BindingMode::SELECTION,
+                        "~selection" => res.not_mode |= BindingMode::SELECTION,
                         _ => return Err(E::invalid_value(Unexpected::Str(modifier), &self)),
                     }
                 }
@@ -1448,5 +1453,47 @@ mod tests {
         assert!(binding.is_triggered_by(BindingMode::VI, mods, &t));
         assert!(!binding.is_triggered_by(BindingMode::ALT_SCREEN, mods, &t));
         assert!(!binding.is_triggered_by(BindingMode::ALT_SCREEN | BindingMode::VI, mods, &t));
+    }
+
+    #[test]
+    fn selection_mode_tracks_selection_presence() {
+        assert!(BindingMode::new(&TermMode::empty(), false, true).contains(BindingMode::SELECTION));
+        assert!(
+            !BindingMode::new(&TermMode::empty(), false, false).contains(BindingMode::SELECTION)
+        );
+    }
+
+    #[test]
+    fn binding_requires_selection() {
+        let binding = MockBinding { mode: BindingMode::SELECTION, ..MockBinding::default() };
+
+        let t = binding.trigger;
+        let mods = binding.mods;
+
+        assert!(binding.is_triggered_by(BindingMode::SELECTION, mods, &t));
+        assert!(!binding.is_triggered_by(BindingMode::empty(), mods, &t));
+    }
+
+    #[test]
+    fn binding_forbids_selection() {
+        let binding = MockBinding { notmode: BindingMode::SELECTION, ..MockBinding::default() };
+
+        let t = binding.trigger;
+        let mods = binding.mods;
+
+        assert!(binding.is_triggered_by(BindingMode::empty(), mods, &t));
+        assert!(!binding.is_triggered_by(BindingMode::SELECTION, mods, &t));
+    }
+
+    #[test]
+    fn deserialize_selection_mode() {
+        let mode =
+            ModeWrapper::deserialize(SerdeValue::String("Selection | ~Vi".into())).unwrap();
+        assert_eq!(mode.mode, BindingMode::SELECTION);
+        assert_eq!(mode.not_mode, BindingMode::VI);
+
+        let not_mode = ModeWrapper::deserialize(SerdeValue::String("~Selection".into())).unwrap();
+        assert_eq!(not_mode.mode, BindingMode::empty());
+        assert_eq!(not_mode.not_mode, BindingMode::SELECTION);
     }
 }
