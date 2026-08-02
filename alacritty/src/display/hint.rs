@@ -396,10 +396,16 @@ pub fn highlighted_at<T>(
 
     config.hints.enabled.iter().find_map(|hint| {
         // Check if all required modifiers are pressed.
+        //
+        // While the application captures the mouse, a hint without modifiers would be
+        // indistinguishable from a plain click, so shift is required to disambiguate. A hint
+        // with its own modifiers cannot be confused with a plain click and stays available.
         let highlight = hint.mouse.is_some_and(|mouse| {
             mouse.enabled
                 && mouse_mods.contains(mouse.mods.0)
-                && (!mouse_mode || mouse_mods.contains(ModifiersState::SHIFT))
+                && (!mouse_mode
+                    || !mouse.mods.0.is_empty()
+                    || mouse_mods.contains(ModifiersState::SHIFT))
         });
         if !highlight {
             return None;
@@ -592,7 +598,7 @@ impl<T> Iterator for HintPostProcessor<'_, T> {
 mod tests {
     use alacritty_terminal::index::{Column, Line};
     use alacritty_terminal::term::test::mock_term;
-    use alacritty_terminal::vte::ansi::Handler;
+    use alacritty_terminal::vte::ansi::{Handler, NamedPrivateMode};
 
     use super::*;
 
@@ -687,6 +693,43 @@ mod tests {
             unique_hyperlinks.next()
         );
         assert_eq!(None, unique_hyperlinks.next());
+    }
+
+    #[test]
+    fn mouse_mode_only_reserves_shift_for_modifierless_hints() {
+        let mut term = mock_term("https://example.org");
+        term.set_private_mode(NamedPrivateMode::ReportMouseClicks.into());
+        let point = Point::new(Line(0), Column(0));
+
+        // A hint with its own modifiers cannot be confused with a plain click, so it stays
+        // available while the application captures the mouse.
+        let config = config_with_hint_mods(ModifiersState::CONTROL);
+        assert!(highlighted_at(&term, &config, point, ModifiersState::CONTROL).is_some());
+
+        // A hint without modifiers would swallow every click, so shift is still required.
+        let config = config_with_hint_mods(ModifiersState::empty());
+        assert!(highlighted_at(&term, &config, point, ModifiersState::empty()).is_none());
+        assert!(highlighted_at(&term, &config, point, ModifiersState::SHIFT).is_some());
+    }
+
+    #[test]
+    fn modifierless_hints_need_no_shift_outside_mouse_mode() {
+        let term = mock_term("https://example.org");
+        let point = Point::new(Line(0), Column(0));
+
+        let config = config_with_hint_mods(ModifiersState::empty());
+        assert!(highlighted_at(&term, &config, point, ModifiersState::empty()).is_some());
+    }
+
+    /// Build a config whose only hint requires the given mouse modifiers.
+    fn config_with_hint_mods(mods: ModifiersState) -> UiConfig {
+        let mut config = UiConfig::default();
+        let mut hint = (*config.hints.enabled.remove(0)).clone();
+        let mut mouse = hint.mouse.expect("default hint is mouse enabled");
+        mouse.mods.0 = mods;
+        hint.mouse = Some(mouse);
+        config.hints.enabled.push(Rc::new(hint));
+        config
     }
 
     #[test]

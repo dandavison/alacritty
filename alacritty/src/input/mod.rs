@@ -497,9 +497,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         // Don't launch URLs if mouse has moved.
         self.ctx.mouse_mut().block_hint_launcher = true;
 
-        if (lmb_pressed || rmb_pressed)
-            && (self.ctx.modifiers().state().shift_key() || !self.ctx.mouse_mode())
-        {
+        if (lmb_pressed || rmb_pressed) && !self.mouse_reporting() {
             self.ctx.update_selection(point, cell_side);
         } else if cell_changed
             && self.ctx.terminal().mode().intersects(TermMode::MOUSE_MOTION | TermMode::MOUSE_DRAG)
@@ -616,7 +614,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
 
     fn on_mouse_press(&mut self, button: MouseButton) {
         // Handle mouse mode.
-        if !self.ctx.modifiers().state().shift_key() && self.ctx.mouse_mode() {
+        if self.mouse_reporting() {
             self.ctx.mouse_mut().click_state = ClickState::None;
 
             let code = match button {
@@ -694,7 +692,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
     }
 
     fn on_mouse_release(&mut self, button: MouseButton) {
-        if !self.ctx.modifiers().state().shift_key() && self.ctx.mouse_mode() {
+        if self.mouse_reporting() {
             let code = match button {
                 MouseButton::Left => 0,
                 MouseButton::Middle => 1,
@@ -1109,11 +1107,29 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             mouse_state
         } else if self.ctx.display().highlighted_hint.as_ref().is_some_and(hint_highlighted) {
             CursorIcon::Pointer
-        } else if !self.ctx.modifiers().state().shift_key() && self.ctx.mouse_mode() {
+        } else if self.mouse_reporting() {
             CursorIcon::Default
         } else {
             CursorIcon::Text
         }
+    }
+
+    /// Whether mouse events should be reported to the application.
+    ///
+    /// Shift keeps clicks local, as does any modifier bound to a mouse hint, so that hints
+    /// stay usable while an application has captured the mouse.
+    fn mouse_reporting(&mut self) -> bool {
+        self.ctx.mouse_mode() && !self.ctx.modifiers().state().shift_key() && !self.hint_mods_held()
+    }
+
+    /// Whether the held modifiers are reserved for launching a mouse hint.
+    fn hint_mods_held(&mut self) -> bool {
+        let mods = self.ctx.modifiers().state();
+        self.ctx.config().hints.enabled.iter().any(|hint| {
+            hint.mouse.is_some_and(|mouse| {
+                mouse.enabled && !mouse.mods.0.is_empty() && mods.contains(mouse.mods.0)
+            })
+        })
     }
 
     /// Handle automatic scrolling when selecting above/below the window.

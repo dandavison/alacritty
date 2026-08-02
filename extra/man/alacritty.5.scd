@@ -731,6 +731,11 @@ _action_ or a _command_.
 		The _enabled_ field controls if the hint should be underlined when
 		hovering over the hint text with all _mods_ pressed.
 
+		When an application running within Alacritty captures the mouse, a hint
+		with no _mods_ additionally requires _Shift_, since it would otherwise
+		be indistinguishable from a plain click. A hint with its own _mods_
+		takes precedence over mouse reporting and needs no _Shift_.
+
 	Default:
 		*[[hints.enabled]]*++
 command         = _"xdg-open"_ # On Linux/BSD++
