@@ -22,6 +22,7 @@ Notable changes to the `alacritty_terminal` crate are documented in its
 ### Fixed
 
 - Spurious "Failed to set new owner of XCB selection" warnings on X11
+- Copying failing when another process claimed the clipboard at the same moment
 - Lacking permissions to launch software sending Apple events
 - Mouse hints bound to a modifier also requiring shift while an application captures the mouse
 

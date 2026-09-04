@@ -12,6 +12,15 @@ use copypasta::wayland_clipboard;
 #[cfg(all(feature = "x11", not(any(target_os = "macos", windows))))]
 use copypasta::x11_clipboard::{Primary as X11SelectionClipboard, X11ClipboardContext};
 
+/// Attempts made to store text before giving up.
+///
+/// Storing is not atomic: on macOS `NSPasteboard` ownership is claimed by
+/// `clearContents` and released by the write that follows, so a claim from
+/// another process (a clipboard manager, Universal Clipboard) in between makes
+/// the write fail. Retrying wins the race; under synthetic contention each
+/// extra attempt cut the failure rate by roughly six.
+const STORE_ATTEMPTS: usize = 3;
+
 pub struct Clipboard {
     clipboard: Box<dyn ClipboardProvider>,
     selection: Option<Box<dyn ClipboardProvider>>,
@@ -62,9 +71,16 @@ impl Clipboard {
             _ => &mut self.clipboard,
         };
 
-        clipboard.set_contents(text.into()).unwrap_or_else(|err| {
-            warn!("Unable to store text in clipboard: {err}");
-        });
+        let text = text.into();
+        for attempt in 1..=STORE_ATTEMPTS {
+            match clipboard.set_contents(text.clone()) {
+                Ok(()) => return,
+                Err(err) if attempt == STORE_ATTEMPTS => {
+                    warn!("Unable to store text in clipboard: {err}")
+                },
+                Err(err) => debug!("Retrying clipboard store, attempt {attempt} failed: {err}"),
+            }
+        }
     }
 
     pub fn load(&mut self, ty: ClipboardType) -> String {
