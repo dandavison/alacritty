@@ -809,7 +809,7 @@ impl<'a> Deserialize<'a> for ModeWrapper {
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str(
-                    "a combination of AppCursor | AppKeypad | Alt | Vi | Search | Selection, \
+                    "a combination of AppCursor | AppKeypad | Alt | Vi | Search | dan_selection, \
                      possibly with negation (~)",
                 )
             }
@@ -833,8 +833,8 @@ impl<'a> Deserialize<'a> for ModeWrapper {
                         "~vi" => res.not_mode |= BindingMode::VI,
                         "search" => res.mode |= BindingMode::SEARCH,
                         "~search" => res.not_mode |= BindingMode::SEARCH,
-                        "selection" => res.mode |= BindingMode::SELECTION,
-                        "~selection" => res.not_mode |= BindingMode::SELECTION,
+                        "dan_selection" => res.mode |= BindingMode::SELECTION,
+                        "~dan_selection" => res.not_mode |= BindingMode::SELECTION,
                         _ => return Err(E::invalid_value(Unexpected::Str(modifier), &self)),
                     }
                 }
@@ -1488,11 +1488,12 @@ mod tests {
     #[test]
     fn deserialize_selection_mode() {
         let mode =
-            ModeWrapper::deserialize(SerdeValue::String("Selection | ~Vi".into())).unwrap();
+            ModeWrapper::deserialize(SerdeValue::String("dan_selection | ~Vi".into())).unwrap();
         assert_eq!(mode.mode, BindingMode::SELECTION);
         assert_eq!(mode.not_mode, BindingMode::VI);
 
-        let not_mode = ModeWrapper::deserialize(SerdeValue::String("~Selection".into())).unwrap();
+        let not_mode =
+            ModeWrapper::deserialize(SerdeValue::String("~dan_selection".into())).unwrap();
         assert_eq!(not_mode.mode, BindingMode::empty());
         assert_eq!(not_mode.not_mode, BindingMode::SELECTION);
     }

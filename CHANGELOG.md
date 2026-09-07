@@ -17,7 +17,8 @@ Notable changes to the `alacritty_terminal` crate are documented in its
 
 ### Added
 
-- `Selection` keyboard/mouse binding mode, active while a non-empty selection exists
+- `dan_selection` keyboard/mouse binding mode, active while a non-empty selection exists
+- `hints.enabled.dan_openable`, discarding matches which `hints.dan_openable_command` would not open
 
 ### Fixed
 
