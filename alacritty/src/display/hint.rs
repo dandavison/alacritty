@@ -14,7 +14,8 @@ use alacritty_terminal::term::search::{Match, RegexIter, RegexSearch};
 use alacritty_terminal::term::{Term, TermMode};
 
 use crate::config::UiConfig;
-use crate::config::ui_config::{Hint, HintAction};
+use crate::config::ui_config::{Hint, HintAction, Program};
+use crate::display::openable::Openable;
 
 /// Maximum number of linewraps followed outside of the viewport during search highlighting.
 pub const MAX_SEARCH_LINES: usize = 100;
@@ -38,6 +39,9 @@ pub struct HintState {
 
     /// Keys pressed for hint selection.
     keys: Vec<char>,
+
+    /// Answers about what `dan_openable` hints would open.
+    pub openable: Openable,
 }
 
 impl HintState {
@@ -49,6 +53,7 @@ impl HintState {
             matches: Default::default(),
             labels: Default::default(),
             keys: Default::default(),
+            openable: Default::default(),
         }
     }
 
@@ -71,8 +76,8 @@ impl HintState {
     }
 
     /// Update the visible hint matches and key labels.
-    pub fn update_matches<T>(&mut self, term: &Term<T>) {
-        let hint = match self.hint.as_mut() {
+    pub fn update_matches<T>(&mut self, term: &Term<T>, config: &UiConfig) {
+        let hint = match self.hint.clone() {
             Some(hint) => hint,
             None => return,
         };
@@ -100,6 +105,28 @@ impl HintState {
                     self.matches.extend(matches);
                 }
             });
+
+            if let Some(program) = hint.dan_openable.then(|| openable_command(config)).flatten() {
+                let openable = &mut self.openable;
+                let mut unanswered = false;
+                self.matches.retain(|bounds| {
+                    let text = term.bounds_to_string(*bounds.start(), *bounds.end());
+                    match openable.ask(program, &text) {
+                        Some(openable) => openable,
+                        None => {
+                            unanswered = true;
+                            false
+                        },
+                    }
+                });
+
+                // Labels appear as answers arrive, rather than hint mode ending
+                // the moment it starts because nothing has answered yet.
+                if unanswered && self.matches.is_empty() {
+                    self.labels.clear();
+                    return;
+                }
+            }
         }
 
         // Cancel highlight with no visible matches.
@@ -129,7 +156,12 @@ impl HintState {
     }
 
     /// Handle keyboard input during hint selection.
-    pub fn keyboard_input<T>(&mut self, term: &Term<T>, c: char) -> Option<HintMatch> {
+    pub fn keyboard_input<T>(
+        &mut self,
+        term: &Term<T>,
+        config: &UiConfig,
+        c: char,
+    ) -> Option<HintMatch> {
         match c {
             // Use backspace to remove the last character pressed.
             '\x08' | '\x1f' => {
@@ -141,7 +173,7 @@ impl HintState {
         }
 
         // Update the visible matches.
-        self.update_matches(term);
+        self.update_matches(term, config);
 
         let hint = self.hint.as_ref()?;
 
@@ -391,6 +423,7 @@ pub fn highlighted_at<T>(
     config: &UiConfig,
     point: Point,
     mouse_mods: ModifiersState,
+    openable: &mut Openable,
 ) -> Option<HintMatch> {
     let mouse_mode = term.mode().intersects(TermMode::MOUSE_MODE);
 
@@ -420,12 +453,21 @@ pub fn highlighted_at<T>(
         let bounds = hint.content.regex.as_ref().and_then(|regex| {
             regex.with_compiled(|regex| regex_match_at(term, point, regex, hint.post_processing))
         });
-        if let Some(bounds) = bounds.flatten() {
-            return Some(HintMatch { bounds, hint: hint.clone(), hyperlink: None });
+        let bounds = bounds.flatten()?;
+        if let Some(program) = hint.dan_openable.then(|| openable_command(config)).flatten() {
+            let text = term.bounds_to_string(*bounds.start(), *bounds.end());
+            if openable.ask(program, &text) != Some(true) {
+                return None;
+            }
         }
-
-        None
+        Some(HintMatch { bounds, hint: hint.clone(), hyperlink: None })
     })
+}
+
+/// Program asked what a `dan_openable` hint would open. Without one, such a
+/// hint matches nothing: there is nothing to ask.
+fn openable_command(config: &UiConfig) -> Option<&Program> {
+    config.hints.dan_openable_command.as_ref()
 }
 
 /// Retrieve the hyperlink with its range, if there is one at the specified point.
@@ -704,12 +746,33 @@ mod tests {
         // A hint with its own modifiers cannot be confused with a plain click, so it stays
         // available while the application captures the mouse.
         let config = config_with_hint_mods(ModifiersState::CONTROL);
-        assert!(highlighted_at(&term, &config, point, ModifiersState::CONTROL).is_some());
+        assert!(
+            highlighted_at(
+                &term,
+                &config,
+                point,
+                ModifiersState::CONTROL,
+                &mut Openable::default()
+            )
+            .is_some()
+        );
 
         // A hint without modifiers would swallow every click, so shift is still required.
         let config = config_with_hint_mods(ModifiersState::empty());
-        assert!(highlighted_at(&term, &config, point, ModifiersState::empty()).is_none());
-        assert!(highlighted_at(&term, &config, point, ModifiersState::SHIFT).is_some());
+        assert!(
+            highlighted_at(
+                &term,
+                &config,
+                point,
+                ModifiersState::empty(),
+                &mut Openable::default()
+            )
+            .is_none()
+        );
+        assert!(
+            highlighted_at(&term, &config, point, ModifiersState::SHIFT, &mut Openable::default())
+                .is_some()
+        );
     }
 
     #[test]
@@ -718,7 +781,16 @@ mod tests {
         let point = Point::new(Line(0), Column(0));
 
         let config = config_with_hint_mods(ModifiersState::empty());
-        assert!(highlighted_at(&term, &config, point, ModifiersState::empty()).is_some());
+        assert!(
+            highlighted_at(
+                &term,
+                &config,
+                point,
+                ModifiersState::empty(),
+                &mut Openable::default()
+            )
+            .is_some()
+        );
     }
 
     /// Build a config whose only hint requires the given mouse modifiers.
@@ -729,6 +801,108 @@ mod tests {
         mouse.mods.0 = mods;
         hint.mouse = Some(mouse);
         config.hints.enabled.push(Rc::new(hint));
+        config
+    }
+
+    #[test]
+    fn openable_hints_highlight_only_what_the_program_would_open() {
+        let point = Point::new(Line(0), Column(0));
+        let config = config_with_openable_hint();
+        let mut openable = Openable::default();
+        openable.answer(vec![
+            ("src/main.rs:91-95".into(), true),
+            ("operator_commands.go:245-249.".into(), false),
+        ]);
+
+        let term = mock_term("src/main.rs:91-95");
+        assert!(
+            highlighted_at(&term, &config, point, ModifiersState::CONTROL, &mut openable).is_some()
+        );
+
+        let term = mock_term("operator_commands.go:245-249.");
+        assert!(
+            highlighted_at(&term, &config, point, ModifiersState::CONTROL, &mut openable).is_none()
+        );
+    }
+
+    #[test]
+    fn openable_hints_highlight_nothing_until_the_program_answers() {
+        let point = Point::new(Line(0), Column(0));
+        let config = config_with_openable_hint();
+        let mut openable = Openable::default();
+
+        let term = mock_term("src/main.rs:91-95");
+        assert!(
+            highlighted_at(&term, &config, point, ModifiersState::CONTROL, &mut openable).is_none()
+        );
+    }
+
+    #[test]
+    fn an_openable_hint_and_its_command_are_read_from_the_config() {
+        let config: UiConfig = toml::from_str(
+            r#"
+            [hints]
+            dan_openable_command = { program = "/bin/sh", args = ["-c", "openable"] }
+
+            [[hints.enabled]]
+            regex = "."
+            action = "Select"
+            dan_openable = true
+            "#,
+        )
+        .unwrap();
+
+        let command = config.hints.dan_openable_command.expect("command in config");
+        assert_eq!(command.program(), "/bin/sh");
+        assert_eq!(command.args(), ["-c", "openable"]);
+        assert!(config.hints.enabled[0].dan_openable);
+    }
+
+    #[test]
+    fn hint_mode_waits_for_an_answer_rather_than_ending() {
+        let config = config_with_openable_hint();
+        let term = mock_term("src/main.rs:91-95");
+        let mut hint_state = HintState::new(config.hints.alphabet());
+        hint_state.start(config.hints.enabled[0].clone());
+
+        hint_state.update_matches(&term, &config);
+        assert!(hint_state.active(), "hint mode ended before anything answered");
+        assert!(hint_state.matches().is_empty());
+
+        hint_state.openable.answer(vec![("src/main.rs:91-95".into(), true)]);
+        hint_state.update_matches(&term, &config);
+        assert_eq!(hint_state.matches().len(), 1);
+        assert_eq!(hint_state.labels().len(), 1);
+    }
+
+    #[test]
+    fn hint_mode_ends_when_the_program_would_open_nothing_visible() {
+        let config = config_with_openable_hint();
+        let term = mock_term("src/main.rs:91-95");
+        let mut hint_state = HintState::new(config.hints.alphabet());
+        hint_state.start(config.hints.enabled[0].clone());
+
+        hint_state.openable.answer(vec![("src/main.rs:91-95".into(), false)]);
+        hint_state.update_matches(&term, &config);
+
+        assert!(!hint_state.active());
+    }
+
+    /// Build a config whose only hint offers path-shaped text its program would open.
+    fn config_with_openable_hint() -> UiConfig {
+        let hint: Hint = toml::from_str(
+            r#"
+            regex = '[A-Za-z0-9._/:()-]+'
+            dan_openable = true
+            action = "Select"
+            mouse = { enabled = true, mods = "Control" }
+            "#,
+        )
+        .unwrap();
+
+        let mut config = UiConfig::default();
+        config.hints.enabled = vec![Rc::new(hint)];
+        config.hints.dan_openable_command = Some(Program::Just("true".into()));
         config
     }
 

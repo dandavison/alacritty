@@ -553,6 +553,8 @@ pub enum EventType {
     BlinkCursor,
     BlinkCursorTimeout,
     SearchNext,
+    /// What `hints.dan_openable_command` said it would open, per match.
+    OpenableAnswers(Vec<(String, bool)>),
     #[cfg(unix)]
     Shutdown,
     Frame,
@@ -1223,7 +1225,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
 
     /// Process a new character for keyboard hints.
     fn hint_input(&mut self, c: char) {
-        if let Some(hint) = self.display.hint_state.keyboard_input(self.terminal, c) {
+        if let Some(hint) = self.display.hint_state.keyboard_input(self.terminal, self.config, c) {
             self.mouse.block_hint_launcher = false;
             self.trigger_hint(&hint);
         }
@@ -1842,6 +1844,11 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
         match event {
             WinitEvent::UserEvent(Event { payload, .. }) => match payload {
                 EventType::SearchNext => self.ctx.goto_match(None),
+                EventType::OpenableAnswers(answers) => {
+                    self.ctx.display.hint_state.openable.answer(answers);
+                    self.ctx.mouse.hint_highlight_dirty = true;
+                    *self.ctx.dirty = true;
+                },
                 EventType::Scroll(scroll) => self.ctx.scroll(scroll),
                 EventType::BlinkCursor => {
                     // Only change state when timeout isn't reached, since we could get

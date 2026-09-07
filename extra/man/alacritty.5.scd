@@ -673,7 +673,22 @@ terminal and pipe it to other applications.
 
 	Default: _"jfkdls;ahgurieowpq"_
 
-*enabled* = [{ *<regex>*, *<hyperlinks>*, *<post_processing>*, *<persist>*, *<action>*, *<command>*, *<binding>*, *<mouse>* },]
+*dan_openable_command* = _"<string>"_ | { program = _"<string>"_, args = [_"<string>"_,] }
+
+	Program asked which matches of a *dan_openable* hint it would open. The
+	matches are passed to it as arguments, after a _--_, and it prints those
+	it would open, one per line.
+
+	This exists for a program that knows what a match means better than a
+	terminal can: what a relative path names, for instance, depends on the
+	directory of the multiplexer pane it was printed in, which is not visible
+	from here.
+
+	The dan_ prefix marks this as existing only in this fork.
+
+	Default: none
+
+*enabled* = [{ *<regex>*, *<hyperlinks>*, *<post_processing>*, *<dan_openable>*, *<persist>*, *<action>*, *<command>*, *<binding>*, *<mouse>* },]
 
 Array with all available hints.
 
@@ -694,6 +709,18 @@ _action_ or a _command_.
 		When this is _true_, heuristics will be used to shorten the match if
 		there are characters likely not to be part of the hint (e.g. a trailing
 		_._). This is most useful for URIs and applies only to _regex_ matches.
+
+	*dan_openable* = _true_ | _false_
+
+		When this is _true_, a match is discarded unless
+		*dan_openable_command* says it would open it. This applies only to
+		_regex_ matches, and matches nothing when no such command is
+		configured.
+
+		Answers are remembered for a second, so a match is not underlined
+		until the command has answered, shortly after the pointer reaches it.
+
+		The dan_ prefix marks this as existing only in this fork.
 
 	*persist* = _true_ | _false_
 

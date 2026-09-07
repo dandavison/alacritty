@@ -242,6 +242,13 @@ pub struct Hints {
     /// Characters for the hint labels.
     alphabet: HintsAlphabet,
 
+    /// Program asked which matches of a `dan_openable` hint it would open.
+    ///
+    /// It is passed the matches, after a `--`, and prints those it would open,
+    /// one per line. Named with a `dan_` prefix because it exists only in this
+    /// fork.
+    pub dan_openable_command: Option<Program>,
+
     /// All configured terminal hints.
     pub enabled: Vec<Rc<Hint>>,
 }
@@ -269,6 +276,7 @@ impl Default for Hints {
                 action,
                 persist: false,
                 post_processing: true,
+                dan_openable: false,
                 mouse: Some(HintMouse { enabled: true, mods: Default::default() }),
                 binding: Some(HintBinding {
                     key: BindingKey::Keycode {
@@ -281,6 +289,7 @@ impl Default for Hints {
                 }),
             })],
             alphabet: Default::default(),
+            dan_openable_command: None,
         }
     }
 }
@@ -363,6 +372,12 @@ pub struct Hint {
     /// Hint text post processing.
     #[serde(default)]
     pub post_processing: bool,
+
+    /// Discard matches which `hints.dan_openable_command` would not open.
+    ///
+    /// Named with a `dan_` prefix because it exists only in this fork.
+    #[serde(default)]
+    pub dan_openable: bool,
 
     /// Persist hints after selection.
     #[serde(default)]

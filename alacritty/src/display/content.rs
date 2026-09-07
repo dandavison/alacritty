@@ -67,7 +67,7 @@ impl<'a> RenderableContent<'a> {
         let cursor_point = term::point_to_viewport(display_offset, cursor_point).unwrap();
 
         let hint = if display.hint_state.active() {
-            display.hint_state.update_matches(term);
+            display.hint_state.update_matches(term, config);
             Some(Hint::from(&display.hint_state))
         } else {
             None

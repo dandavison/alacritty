@@ -33,6 +33,7 @@ use alacritty_terminal::tty;
 use crate::cli::{ParsedOptions, WindowOptions};
 use crate::clipboard::Clipboard;
 use crate::config::UiConfig;
+#[cfg(not(windows))]
 use crate::display::Display;
 use crate::display::window::Window;
 use crate::event::{
@@ -167,7 +168,7 @@ impl WindowContext {
 
     /// Create a new terminal window context.
     fn new(
-        display: Display,
+        mut display: Display,
         config: Rc<UiConfig>,
         options: WindowOptions,
         proxy: EventLoopProxy<Event>,
@@ -184,6 +185,7 @@ impl WindowContext {
         );
 
         let event_proxy = EventProxy::new(proxy, display.window.id());
+        display.hint_state.openable.set_event_proxy(event_proxy.clone());
 
         // Create the terminal.
         //

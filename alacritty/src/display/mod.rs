@@ -61,6 +61,7 @@ pub mod color;
 pub mod content;
 pub mod cursor;
 pub mod hint;
+pub mod openable;
 pub mod window;
 
 mod bell;
@@ -1067,7 +1068,7 @@ impl Display {
         let vi_highlighted_hint = if term.mode().contains(TermMode::VI) {
             let mods = ModifiersState::all();
             let point = term.vi_mode_cursor.point;
-            hint::highlighted_at(term, config, point, mods)
+            hint::highlighted_at(term, config, point, mods, &mut self.hint_state.openable)
         } else {
             None
         };
@@ -1094,7 +1095,8 @@ impl Display {
 
         // Find highlighted hint at mouse position.
         let point = mouse.point(&self.size_info, term.grid().display_offset());
-        let highlighted_hint = hint::highlighted_at(term, config, point, modifiers);
+        let highlighted_hint =
+            hint::highlighted_at(term, config, point, modifiers, &mut self.hint_state.openable);
 
         // Update cursor shape.
         if highlighted_hint.is_some() {
