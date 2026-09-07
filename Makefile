@@ -79,6 +79,11 @@ install-universal: $(INSTALL)-native ## Mount universal disk image
 $(INSTALL)-%: $(DMG_NAME)-%
 	@open $(DMG_DIR)/$(DMG_NAME)
 
+install-app: app
+	rm -r /tmp/Alacritty.app
+	mv /Applications/Alacritty.app /tmp/
+	cp -r target/release/osx/Alacritty.app /Applications
+
 .PHONY: app binary clean dmg install $(TARGET) $(TARGET)-universal
 
 clean: ## Remove all build artifacts
